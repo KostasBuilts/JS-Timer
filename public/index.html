@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Χρονόμετρο</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .progress-container {
+            position: relative;
+            width: 100%;
+            padding-top: 100%;
+            max-width: 100vw;
+            max-height: 100vw;
+            margin-bottom: 1rem;
+        }
+
+        svg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .progress-circle-bg {
+            fill: none;
+            stroke: #334155;
+            stroke-width: 50;
+        }
+
+        .progress-circle {
+            fill: none;
+            stroke: #38bdf8;
+            stroke-width: 50;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s linear;
+        }
+
+        #time-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3.5rem;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        .controls, .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px;
+        }
+
+        input, button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        input {
+            background-color: #1e293b;
+            color: white;
+            border: 1px solid #64748b;
+        }
+
+        button {
+            background-color: #38bdf8;
+            color: white;
+        }
+
+        button:hover {
+            background-color: #0284c7;
+        }
+
+        @media (min-width: 768px) {
+            #time-display {
+                font-size: 10rem;
+            }
+
+            .progress-container {
+                max-width: 550px;
+                max-height: 550px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="progress-container" onclick="handleCircleClick()">
+        <svg>
+            <circle class="progress-circle-bg" cx="50%" cy="50%" r="40%" />
+            <circle class="progress-circle" cx="50%" cy="50%" r="40%" />
+        </svg>
+        <div id="time-display">Loading...</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="updateTime(5)">5 Min</button>
+        <button onclick="updateTime(10)">10 Min</button>
+        <button onclick="updateTime(15)">15 Min</button>
+        <button onclick="updateTime(30)">30 Min</button>
+        <button onclick="updateTime(45)">45 Min</button>
+    </div>
+
+    <form onsubmit="event.preventDefault(); updateTime(document.getElementById('custom-time').value);">
+        <input type="number" id="custom-time" placeholder="Θέστε χρόνο" min="1" />
+        <button type="submit">Εφαρμογή</button>
+    </form>
+
+    <button onclick="resetTimer()">Επαναφορά</button>
+</div>
+
+<script>
+    const circle = document.querySelector(".progress-circle");
+    const radius = circle.r.baseVal.value;
+    const circumference = 2 * Math.PI * radius;
+    circle.style.strokeDasharray = `${circumference} ${circumference}`;
+    circle.style.strokeDashoffset = `${circumference}`;
+
+    let totalTime = 900;
+    let currentTime = totalTime;
+    let paused = true;
+
+    async function fetchTime() {
+        const res = await fetch('/time');
+        const data = await res.json();
+        currentTime = data.currentTime;
+        totalTime = data.totalTime;
+        paused = data.timerPaused;
+
+        if (currentTime <= 0) {
+            document.getElementById('time-display').textContent = "Time is Out";
+        } else {
+            const m = Math.floor(currentTime / 60);
+            const s = String(currentTime % 60).padStart(2, '0');
+            document.getElementById('time-display').textContent = `${m}:${s}`;
+        }
+
+        const progress = currentTime / totalTime;
+        const offset = circumference * (1 - progress);
+        circle.style.strokeDashoffset = offset;
+    }
+
+    function handleCircleClick() {
+        if (currentTime <= 0) {
+            resetTimer();
+        } else {
+            toggleTimer();
+        }
+    }
+
+    async function toggleTimer() {
+        await fetch('/toggle-timer', { method: 'POST' });
+        fetchTime();
+    }
+
+    async function resetTimer() {
+        await fetch('/reset', { method: 'POST' });
+        fetchTime();
+    }
+
+    async function updateTime(minutes) {
+        await fetch('/set-time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minutes })
+        });
+        fetchTime();
+    }
+
+    setInterval(fetchTime, 1000);
+    fetchTime();
+</script>
+</body>
+</html>
