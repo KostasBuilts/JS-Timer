@@ -152,7 +152,7 @@
         paused = data.timerPaused;
 
         if (currentTime <= 0) {
-            document.getElementById('time-display').textContent = "Time is Out";
+            document.getElementById('time-display').textContent = "Τέλος Χρόνου";
         } else {
             const m = Math.floor(currentTime / 60);
             const s = String(currentTime % 60).padStart(2, '0');
