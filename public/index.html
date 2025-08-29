@@ -1,198 +1,459 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="el">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Χρονόμετρο</title>
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #0f172a;
-            color: #f8fafc;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-        }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Timer</title>
+<style>
+  :root{
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --muted: #334155;
+    --text: #f8fafc;
+    --btn: #38bdf8;
+    --btn-hover:#0284c7;
+    --orange:#f59e0b;
+    --red:#ef4444;
+    --lightblue:#38bdf8;
+  }
 
-        .container {
-            width: 100%;
-            max-width: 600px;
-            text-align: center;
-        }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Arial,Helvetica,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    height:100vh;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
 
-        .progress-container {
-            position: relative;
-            width: 100%;
-            padding-top: 100%;
-            max-width: 100vw;
-            max-height: 100vw;
-            margin-bottom: 1rem;
-        }
+  /* --- Main Timer --- */
+  .stage{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+  }
 
-        svg {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            transform: rotate(-90deg);
-        }
+  .progress-wrap{
+    position:relative;
+    width:min(92vw,700px);
+    aspect-ratio:1/1;
+    user-select:none;
+    -webkit-user-select:none;
+    touch-action:manipulation;
+    cursor:pointer;
+  }
+  svg{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    transform:rotate(-90deg);
+  }
+  .bg-ring{
+    fill:none; stroke:var(--muted); stroke-width:50;
+  }
+  .ring{
+    fill:none; stroke:var(--lightblue); stroke-width:50; stroke-linecap:round;
+    transition: stroke-dashoffset 1s linear, stroke 0.6s linear;
+  }
+  #display{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; line-height:1;
+    font-size: clamp(5rem, 12vw, 11rem);  /* BIG again */
+    color: var(--text);
+    transition: color 0.6s linear;
+    pointer-events:none;
+  }
 
-        .progress-circle-bg {
-            fill: none;
-            stroke: #334155;
-            stroke-width: 50;
-        }
+  /* --- Mode toggle & controls --- */
+  .topbar{
+    position:fixed; top:12px; left:12px; right:12px;
+    display:flex; justify-content:space-between; align-items:center;
+    pointer-events:none;
+  }
+  .mode-btn{
+    pointer-events:auto;
+    padding:8px 12px; border:none; border-radius:8px;
+    background:var(--btn); color:#fff; font-weight:700; cursor:pointer;
+  }
+  .mode-btn:hover{ background:var(--btn-hover); }
 
-        .progress-circle {
-            fill: none;
-            stroke: #38bdf8;
-            stroke-width: 50;
-            stroke-linecap: round;
-            transition: stroke-dashoffset 1s linear;
-        }
+  .controls{
+    display:none;
+    flex-wrap:wrap; gap:10px; justify-content:center;
+    width:min(92vw, 820px);
+  }
+  .controls.show{ display:flex; }
 
-        #time-display {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 3.5rem;
-            font-weight: bold;
-            pointer-events: none;
-        }
+  .controls button, .controls input[type="number"]{
+    padding:10px 16px; border:none; border-radius:10px; font-weight:700;
+    font-size:1.05rem;
+  }
+  .controls button{ background:var(--btn); color:#fff; cursor:pointer; }
+  .controls button:hover{ background:var(--btn-hover); }
+  .controls input[type="number"]{
+    background:var(--panel); color:var(--text); border:1px solid #64748b; width:160px;
+  }
 
-        .controls, .button-group {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 10px;
-            margin: 10px;
-        }
+  /* --- Sidebar (Queue) --- */
+  .sidewrap{
+    position:fixed; top:0; right:0; height:100%;
+    width: 320px; pointer-events:none; /* wrapper that moves hamburger with panel */
+  }
+  .sidebar{
+    position:absolute; top:0; right:-320px; height:100%; width:320px;
+    background:var(--panel); box-shadow:-6px 0 18px rgba(0,0,0,.5);
+    padding:16px; overflow-y:auto; transition: transform .3s ease;
+    transform: translateX(0); pointer-events:auto;
+  }
+  .sidewrap.open .sidebar{
+    transform: translateX(-320px); /* slide fully in */
+  }
+  /* Hamburger attached to sidebar edge */
+  .hamburger{
+    position:absolute; top:16px; right:0;
+    transform: translateX(0);
+    font-size:28px; line-height:1;
+    background:var(--btn); color:#fff; border:none; border-radius:8px 0 0 8px;
+    padding:8px 12px; cursor:pointer; transition: right .3s ease, background .2s;
+    pointer-events:auto;
+  }
+  .hamburger:hover{ background:var(--btn-hover); }
+  .sidewrap.open .hamburger{
+    right:320px; /* rides with the panel */
+  }
 
-        input, button {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            font-size: 1.1rem;
-            font-weight: bold;
-            cursor: pointer;
-        }
+  /* modernized queue inputs */
+  .queue-form{
+    display:flex; flex-direction:column; gap:8px; margin-top:8px;
+  }
+  .q-input{
+    background:var(--bg); color:var(--text);
+    border:1px solid #64748b; border-radius:10px;
+    padding:10px 12px; font-weight:700; outline:none;
+  }
+  .q-input::placeholder{ color:#93a4b8; font-weight:600; }
+  .q-add{ background:var(--btn); color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:800; cursor:pointer; }
+  .q-add:hover{ background:var(--btn-hover); }
 
-        input {
-            background-color: #1e293b;
-            color: white;
-            border: 1px solid #64748b;
-        }
+  .q-list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
 
-        button {
-            background-color: #38bdf8;
-            color: white;
-        }
+  /* one-line, compact item with inline edit */
+  .q-item{
+    background:var(--muted); border-radius:10px; padding:8px 10px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .q-text{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-        button:hover {
-            background-color: #0284c7;
-        }
+  .q-actions{ display:flex; gap:6px; }
+  .icon-btn{
+    background:var(--btn); color:#fff; border:none; border-radius:8px;
+    padding:6px 8px; cursor:pointer; font-weight:800;
+  }
+  .icon-btn:hover{ background:var(--btn-hover); }
 
-        @media (min-width: 768px) {
-            #time-display {
-                font-size: 10rem;
-            }
+  .q-edit{
+    flex:1; display:flex; gap:6px; align-items:center;
+  }
+  .q-edit .q-mini{
+    flex: 0 0 90px;
+    background:var(--bg); color:var(--text);
+    border:1px solid #7a8aa3; border-radius:8px; padding:6px 8px; font-weight:700;
+  }
+  .q-edit .q-alias{
+    flex:1;
+    background:var(--bg); color:var(--text);
+    border:1px solid #7a8aa3; border-radius:8px; padding:6px 8px; font-weight:700;
+  }
 
-            .progress-container {
-                max-width: 550px;
-                max-height: 550px;
-            }
-        }
-    </style>
+  /* show controls only when in control mode */
+  .control-mode .controls{ display:flex; }
+  .control-mode .sidewrap{ pointer-events:auto; }
+
+</style>
 </head>
 <body>
-<div class="container">
-    <div class="progress-container" onclick="handleCircleClick()">
-        <svg>
-            <circle class="progress-circle-bg" cx="50%" cy="50%" r="40%" />
-            <circle class="progress-circle" cx="50%" cy="50%" r="40%" />
-        </svg>
-        <div id="time-display">Loading...</div>
+  <div class="topbar">
+    <button class="mode-btn" id="modeToggle" style="visibility:hidden">Λειτουργία Ελέγχου</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="progress-wrap" id="timerBox">
+      <svg>
+        <circle class="bg-ring" cx="50%" cy="50%" r="40%"></circle>
+        <circle class="ring" cx="50%" cy="50%" r="40%"></circle>
+      </svg>
+      <div id="display">--:--</div>
     </div>
 
-    <div class="controls">
-        <button onclick="updateTime(5)">5 Min</button>
-        <button onclick="updateTime(10)">10 Min</button>
-        <button onclick="updateTime(15)">15 Min</button>
-        <button onclick="updateTime(30)">30 Min</button>
-        <button onclick="updateTime(45)">45 Min</button>
+    <!-- full control panel (restored) -->
+    <div class="controls" id="controls">
+      <button data-min="5">5</button>
+      <button data-min="10">10</button>
+      <button data-min="15">15</button>
+      <button data-min="30">30</button>
+      <button data-min="45">45</button>
+
+      <input id="customMin" type="number" min="1" placeholder="Λεπτά">
+      <button id="applyCustom">Εφαρμογή</button>
+      <button id="startStop">Έναρξη / Παύση</button>
+      <button id="resetBtn">Επαναφορά</button>
     </div>
+  </div>
 
-    <form onsubmit="event.preventDefault(); updateTime(document.getElementById('custom-time').value);">
-        <input type="number" id="custom-time" placeholder="Θέστε χρόνο" min="1" />
-        <button type="submit">Εφαρμογή</button>
-    </form>
-
-    <button onclick="resetTimer()">Επαναφορά</button>
-</div>
+  <!-- Sidebar (attached hamburger) -->
+  <div class="sidewrap" id="sidewrap">
+    <div class="sidebar">
+      <h3>Ουρά</h3>
+      <div class="queue-form">
+        <input id="qMin" class="q-input" type="number" min="1" placeholder="Λεπτά">
+        <input id="qAlias" class="q-input" type="text" placeholder="Ψευδώνυμο (προαιρετικό)">
+        <button class="q-add" id="qAdd">Προσθήκη</button>
+      </div>
+      <div class="q-list" id="qList"></div>
+    </div>
+    <button class="hamburger" id="hamburger">☰</button>
+  </div>
 
 <script>
-    const circle = document.querySelector(".progress-circle");
-    const radius = circle.r.baseVal.value;
-    const circumference = 2 * Math.PI * radius;
-    circle.style.strokeDasharray = `${circumference} ${circumference}`;
-    circle.style.strokeDashoffset = `${circumference}`;
+  // ----- SVG ring setup -----
+  const ring = document.querySelector('.ring');
+  const r = ring.r.baseVal.value;
+  const C = 2 * Math.PI * r;
+  ring.style.strokeDasharray = `${C} ${C}`;
+  ring.style.strokeDashoffset = `${C}`;
 
-    let totalTime = 900;
-    let currentTime = totalTime;
-    let paused = true;
+  const display = document.getElementById('display');
 
-    async function fetchTime() {
-        const res = await fetch('/time');
-        const data = await res.json();
-        currentTime = data.currentTime;
-        totalTime = data.totalTime;
-        paused = data.timerPaused;
+  // ----- Mode handling -----
+  let controlMode = false;
+  const stage = document.getElementById('stage');
+  const controls = document.getElementById('controls');
+  const modeToggle = document.getElementById('modeToggle');
 
-        if (currentTime <= 0) {
-            document.getElementById('time-display').textContent = "Time is Out";
-        } else {
-            const m = Math.floor(currentTime / 60);
-            const s = String(currentTime % 60).padStart(2, '0');
-            document.getElementById('time-display').textContent = `${m}:${s}`;
-        }
+  function setMode(isControl){
+    controlMode = isControl;
+    stage.classList.toggle('control-mode', controlMode);
+    modeToggle.style.visibility = controlMode ? 'visible' : 'visible'; // show so you can return
+    document.getElementById('sidewrap').classList.remove('open'); // hide sidebar when switching
+    hamburger.hidden = !isControl;
+  }
 
-        const progress = currentTime / totalTime;
-        const offset = circumference * (1 - progress);
-        circle.style.strokeDashoffset = offset;
+  // Long-press to toggle mode
+  const timerBox = document.getElementById('timerBox');
+  let lpTimer = null;
+  const startLP = ()=> { lpTimer = setTimeout(()=> setMode(!controlMode), 1000); };
+  const endLP = ()=> { if(lpTimer) clearTimeout(lpTimer); };
+
+  timerBox.addEventListener('mousedown', startLP);
+  timerBox.addEventListener('mouseup', endLP);
+  timerBox.addEventListener('mouseleave', endLP);
+  timerBox.addEventListener('touchstart', startLP, {passive:true});
+  timerBox.addEventListener('touchend', endLP);
+
+  // Button to toggle mode (small helper on top-left)
+  modeToggle.addEventListener('click', ()=> setMode(!controlMode));
+
+  // Start/Pause or Reset (click on timer)
+  timerBox.addEventListener('click', async (e) => {
+    // ignore the click that comes from long-press
+    if (lpTimer === null) return;
+    // ask the server if we're overtime
+    const t = await (await fetch('/time')).json();
+    if (t.currentTime <= 0) {
+      await fetch('/reset', {method:'POST'});
+    } else {
+      await fetch('/toggle-timer', {method:'POST'});
     }
+  });
 
-    function handleCircleClick() {
-        if (currentTime <= 0) {
-            resetTimer();
-        } else {
-            toggleTimer();
-        }
+  // ----- Top controls handlers -----
+  controls.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-min]');
+    if (btn){
+      const minutes = parseInt(btn.getAttribute('data-min'), 10);
+      await fetch('/set-time', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes})});
+      return;
     }
+  });
 
-    async function toggleTimer() {
-        await fetch('/toggle-timer', { method: 'POST' });
-        fetchTime();
-    }
+  document.getElementById('applyCustom').addEventListener('click', async () => {
+    const m = parseInt(document.getElementById('customMin').value, 10);
+    if (!m || m <= 0) return;
+    await fetch('/set-time', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes:m})});
+    document.getElementById('customMin').value = '';
+  });
 
-    async function resetTimer() {
-        await fetch('/reset', { method: 'POST' });
-        fetchTime();
-    }
+  document.getElementById('startStop').addEventListener('click', async ()=> {
+    await fetch('/toggle-timer', {method:'POST'});
+  });
 
-    async function updateTime(minutes) {
-        await fetch('/set-time', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ minutes })
+  document.getElementById('resetBtn').addEventListener('click', async ()=> {
+    await fetch('/reset', {method:'POST'});
+  });
+
+  // ----- Sidebar / Queue -----
+  const sidewrap = document.getElementById('sidewrap');
+  const hamburger = document.getElementById('hamburger');
+  hamburger.addEventListener('click', ()=> sidewrap.classList.toggle('open'));
+
+  async function loadQueue(){
+    const res = await fetch('/queue');
+    const items = await res.json();
+    const list = document.getElementById('qList');
+    list.innerHTML = '';
+
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'q-item';
+
+      const text = document.createElement('div');
+      text.className = 'q-text';
+      text.textContent = item.alias ? `${item.alias} (${item.minutes}λ)` : `${item.minutes}λ`;
+      row.appendChild(text);
+
+      const actions = document.createElement('div');
+      actions.className = 'q-actions';
+
+      // Edit inline
+      const editBtn = document.createElement('button');
+      editBtn.className = 'icon-btn';
+      editBtn.textContent = '✎';
+      editBtn.addEventListener('click', () => {
+        row.innerHTML = '';
+        const editWrap = document.createElement('div');
+        editWrap.className = 'q-edit';
+        const minIn = document.createElement('input');
+        minIn.className = 'q-mini';
+        minIn.type = 'number';
+        minIn.min = '1';
+        minIn.value = item.minutes;
+
+        const aliasIn = document.createElement('input');
+        aliasIn.className = 'q-alias';
+        aliasIn.type = 'text';
+        aliasIn.value = item.alias || '';
+
+        editWrap.appendChild(minIn);
+        editWrap.appendChild(aliasIn);
+
+        const save = document.createElement('button');
+        save.className = 'icon-btn';
+        save.textContent = '💾';
+        save.addEventListener('click', async ()=>{
+          await fetch(`/queue/${item.id}`, {
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ minutes: parseInt(minIn.value,10), alias: aliasIn.value })
+          });
+          loadQueue();
         });
-        fetchTime();
+
+        const cancel = document.createElement('button');
+        cancel.className = 'icon-btn';
+        cancel.textContent = '✖';
+        cancel.addEventListener('click', loadQueue);
+
+        row.appendChild(editWrap);
+        row.appendChild(save);
+        row.appendChild(cancel);
+      });
+
+      // Load (auto-dequeue)
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'icon-btn';
+      loadBtn.textContent = '⏎';
+      loadBtn.addEventListener('click', async ()=>{
+        await fetch(`/queue/load/${item.id}`, {method:'POST'});
+        await loadQueue(); // refresh after server dequeues
+      });
+
+      // Delete
+      const delBtn = document.createElement('button');
+      delBtn.className = 'icon-btn';
+      delBtn.textContent = '🗑';
+      delBtn.addEventListener('click', async ()=>{
+        await fetch(`/queue/${item.id}`, {method:'DELETE'});
+        loadQueue();
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(loadBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById('qAdd').addEventListener('click', async ()=>{
+    const m = parseInt(document.getElementById('qMin').value,10);
+    const alias = document.getElementById('qAlias').value;
+    if (!m || m<=0) return;
+    await fetch('/queue', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({minutes:m, alias})});
+    document.getElementById('qMin').value='';
+    document.getElementById('qAlias').value='';
+    loadQueue();
+  });
+
+  // ----- Poll timer and render -----
+  function lerpColorRGB(c1, c2, t){
+    // c1, c2 are [r,g,b] 0..255 ; t in [0,1]
+    return `rgb(${Math.round(c1[0]+(c2[0]-c1[0])*t)},${Math.round(c1[1]+(c2[1]-c1[1])*t)},${Math.round(c1[2]+(c2[2]-c1[2])*t)})`;
+  }
+  const BLUE = [56,189,248];   // #38bdf8
+  const ORANGE=[245,158,11];   // #f59e0b
+  const RED  =[239,68,68];     // #ef4444
+
+  async function refresh(){
+    const data = await (await fetch('/time')).json();
+    const { currentTime, totalTime } = data;
+
+    // Ring progress
+    const progress = Math.max(currentTime, 0) / totalTime;
+    ring.style.strokeDashoffset = C * (1 - progress);
+
+    // Colors
+    if (currentTime > 30){
+      ring.style.stroke = 'rgb('+BLUE.join(',')+')';
+      display.style.color = '#ffffff';
+    } else if (currentTime > 0) {
+      // fade from ORANGE -> RED in last 30s
+      const t = 1 - (currentTime / 30); // 0..1
+      const col = lerpColorRGB(ORANGE, RED, t);
+      ring.style.stroke = col;
+      display.style.color = col;
+    } else {
+      // Overtime: full red ring (restroked) and red text
+      ring.style.strokeDasharray = `${C} ${C}`;
+      ring.style.strokeDashoffset = 0;
+      ring.style.stroke = 'rgb('+RED.join(',')+')';
+      display.style.color = 'rgb('+RED.join(',')+')';
     }
 
-    setInterval(fetchTime, 1000);
-    fetchTime();
+    // Text
+    if (currentTime >= 0){
+      const m = Math.floor(currentTime/60);
+      const s = String(currentTime%60).padStart(2,'0');
+      display.textContent = `${m}:${s}`;
+    } else {
+      const over = Math.abs(currentTime);
+      const m = Math.floor(over/60);
+      const s = String(over%60).padStart(2,'0');
+      display.textContent = `-${m}:${s}`;
+    }
+  }
+
+  setInterval(refresh, 1000);
+  refresh();
+  loadQueue();
+
+  // Start in display mode (controls hidden); show the tiny mode button for convenience
+  setMode(false);
 </script>
 </body>
 </html>
