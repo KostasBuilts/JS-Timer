@@ -221,65 +221,239 @@
   </div>
 
 <script>
-    const circle = document.querySelector(".progress-circle");
-    const radius = circle.r.baseVal.value;
-    const circumference = 2 * Math.PI * radius;
-    circle.style.strokeDasharray = `${circumference} ${circumference}`;
-    circle.style.strokeDashoffset = `${circumference}`;
+  // ----- SVG ring setup -----
+  const ring = document.querySelector('.ring');
+  const r = ring.r.baseVal.value;
+  const C = 2 * Math.PI * r;
+  ring.style.strokeDasharray = `${C} ${C}`;
+  ring.style.strokeDashoffset = `${C}`;
 
-    let totalTime = 900;
-    let currentTime = totalTime;
-    let paused = true;
+  const display = document.getElementById('display');
 
-    async function fetchTime() {
-        const res = await fetch('/time');
-        const data = await res.json();
-        currentTime = data.currentTime;
-        totalTime = data.totalTime;
-        paused = data.timerPaused;
+  // ----- Mode handling -----
+  let controlMode = false;
+  const stage = document.getElementById('stage');
+  const controls = document.getElementById('controls');
+  const modeToggle = document.getElementById('modeToggle');
 
-        if (currentTime <= 0) {
-            document.getElementById('time-display').textContent = "Time is Out";
-        } else {
-            const m = Math.floor(currentTime / 60);
-            const s = String(currentTime % 60).padStart(2, '0');
-            document.getElementById('time-display').textContent = `${m}:${s}`;
-        }
+  function setMode(isControl){
+    controlMode = isControl;
+    stage.classList.toggle('control-mode', controlMode);
+    modeToggle.style.visibility = controlMode ? 'visible' : 'visible'; // show so you can return
+    document.getElementById('sidewrap').classList.remove('open'); // hide sidebar when switching
+    hamburger.hidden = !isControl;
+  }
 
-        const progress = currentTime / totalTime;
-        const offset = circumference * (1 - progress);
-        circle.style.strokeDashoffset = offset;
+  // Long-press to toggle mode
+  const timerBox = document.getElementById('timerBox');
+  let lpTimer = null;
+  const startLP = ()=> { lpTimer = setTimeout(()=> setMode(!controlMode), 1000); };
+  const endLP = ()=> { if(lpTimer) clearTimeout(lpTimer); };
+
+  timerBox.addEventListener('mousedown', startLP);
+  timerBox.addEventListener('mouseup', endLP);
+  timerBox.addEventListener('mouseleave', endLP);
+  timerBox.addEventListener('touchstart', startLP, {passive:true});
+  timerBox.addEventListener('touchend', endLP);
+
+  // Button to toggle mode (small helper on top-left)
+  modeToggle.addEventListener('click', ()=> setMode(!controlMode));
+
+  // Start/Pause or Reset (click on timer)
+  timerBox.addEventListener('click', async (e) => {
+    // ignore the click that comes from long-press
+    if (lpTimer === null) return;
+    // ask the server if we're overtime
+    const t = await (await fetch('/time')).json();
+    if (t.currentTime <= 0) {
+      await fetch('/reset', {method:'POST'});
+    } else {
+      await fetch('/toggle-timer', {method:'POST'});
     }
+  });
 
-    function handleCircleClick() {
-        if (currentTime <= 0) {
-            resetTimer();
-        } else {
-            toggleTimer();
-        }
+  // ----- Top controls handlers -----
+  controls.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-min]');
+    if (btn){
+      const minutes = parseInt(btn.getAttribute('data-min'), 10);
+      await fetch('/set-time', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes})});
+      return;
     }
+  });
 
-    async function toggleTimer() {
-        await fetch('/toggle-timer', { method: 'POST' });
-        fetchTime();
-    }
+  document.getElementById('applyCustom').addEventListener('click', async () => {
+    const m = parseInt(document.getElementById('customMin').value, 10);
+    if (!m || m <= 0) return;
+    await fetch('/set-time', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes:m})});
+    document.getElementById('customMin').value = '';
+  });
 
-    async function resetTimer() {
-        await fetch('/reset', { method: 'POST' });
-        fetchTime();
-    }
+  document.getElementById('startStop').addEventListener('click', async ()=> {
+    await fetch('/toggle-timer', {method:'POST'});
+  });
 
-    async function updateTime(minutes) {
-        await fetch('/set-time', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ minutes })
+  document.getElementById('resetBtn').addEventListener('click', async ()=> {
+    await fetch('/reset', {method:'POST'});
+  });
+
+  // ----- Sidebar / Queue -----
+  const sidewrap = document.getElementById('sidewrap');
+  const hamburger = document.getElementById('hamburger');
+  hamburger.addEventListener('click', ()=> sidewrap.classList.toggle('open'));
+
+  async function loadQueue(){
+    const res = await fetch('/queue');
+    const items = await res.json();
+    const list = document.getElementById('qList');
+    list.innerHTML = '';
+
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'q-item';
+
+      const text = document.createElement('div');
+      text.className = 'q-text';
+      text.textContent = item.alias ? `${item.alias} (${item.minutes}λ)` : `${item.minutes}λ`;
+      row.appendChild(text);
+
+      const actions = document.createElement('div');
+      actions.className = 'q-actions';
+
+      // Edit inline
+      const editBtn = document.createElement('button');
+      editBtn.className = 'icon-btn';
+      editBtn.textContent = '✎';
+      editBtn.addEventListener('click', () => {
+        row.innerHTML = '';
+        const editWrap = document.createElement('div');
+        editWrap.className = 'q-edit';
+        const minIn = document.createElement('input');
+        minIn.className = 'q-mini';
+        minIn.type = 'number';
+        minIn.min = '1';
+        minIn.value = item.minutes;
+
+        const aliasIn = document.createElement('input');
+        aliasIn.className = 'q-alias';
+        aliasIn.type = 'text';
+        aliasIn.value = item.alias || '';
+
+        editWrap.appendChild(minIn);
+        editWrap.appendChild(aliasIn);
+
+        const save = document.createElement('button');
+        save.className = 'icon-btn';
+        save.textContent = '💾';
+        save.addEventListener('click', async ()=>{
+          await fetch(`/queue/${item.id}`, {
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ minutes: parseInt(minIn.value,10), alias: aliasIn.value })
+          });
+          loadQueue();
         });
-        fetchTime();
+
+        const cancel = document.createElement('button');
+        cancel.className = 'icon-btn';
+        cancel.textContent = '✖';
+        cancel.addEventListener('click', loadQueue);
+
+        row.appendChild(editWrap);
+        row.appendChild(save);
+        row.appendChild(cancel);
+      });
+
+      // Load (auto-dequeue)
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'icon-btn';
+      loadBtn.textContent = '⏎';
+      loadBtn.addEventListener('click', async ()=>{
+        await fetch(`/queue/load/${item.id}`, {method:'POST'});
+        await loadQueue(); // refresh after server dequeues
+      });
+
+      // Delete
+      const delBtn = document.createElement('button');
+      delBtn.className = 'icon-btn';
+      delBtn.textContent = '🗑';
+      delBtn.addEventListener('click', async ()=>{
+        await fetch(`/queue/${item.id}`, {method:'DELETE'});
+        loadQueue();
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(loadBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById('qAdd').addEventListener('click', async ()=>{
+    const m = parseInt(document.getElementById('qMin').value,10);
+    const alias = document.getElementById('qAlias').value;
+    if (!m || m<=0) return;
+    await fetch('/queue', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({minutes:m, alias})});
+    document.getElementById('qMin').value='';
+    document.getElementById('qAlias').value='';
+    loadQueue();
+  });
+
+  // ----- Poll timer and render -----
+  function lerpColorRGB(c1, c2, t){
+    // c1, c2 are [r,g,b] 0..255 ; t in [0,1]
+    return `rgb(${Math.round(c1[0]+(c2[0]-c1[0])*t)},${Math.round(c1[1]+(c2[1]-c1[1])*t)},${Math.round(c1[2]+(c2[2]-c1[2])*t)})`;
+  }
+  const BLUE = [56,189,248];   // #38bdf8
+  const ORANGE=[245,158,11];   // #f59e0b
+  const RED  =[239,68,68];     // #ef4444
+
+  async function refresh(){
+    const data = await (await fetch('/time')).json();
+    const { currentTime, totalTime } = data;
+
+    // Ring progress
+    const progress = Math.max(currentTime, 0) / totalTime;
+    ring.style.strokeDashoffset = C * (1 - progress);
+
+    // Colors
+    if (currentTime > 30){
+      ring.style.stroke = 'rgb('+BLUE.join(',')+')';
+      display.style.color = '#ffffff';
+    } else if (currentTime > 0) {
+      // fade from ORANGE -> RED in last 30s
+      const t = 1 - (currentTime / 30); // 0..1
+      const col = lerpColorRGB(ORANGE, RED, t);
+      ring.style.stroke = col;
+      display.style.color = col;
+    } else {
+      // Overtime: full red ring (restroked) and red text
+      ring.style.strokeDasharray = `${C} ${C}`;
+      ring.style.strokeDashoffset = 0;
+      ring.style.stroke = 'rgb('+RED.join(',')+')';
+      display.style.color = 'rgb('+RED.join(',')+')';
     }
 
-    setInterval(fetchTime, 1000);
-    fetchTime();
+    // Text
+    if (currentTime >= 0){
+      const m = Math.floor(currentTime/60);
+      const s = String(currentTime%60).padStart(2,'0');
+      display.textContent = `${m}:${s}`;
+    } else {
+      const over = Math.abs(currentTime);
+      const m = Math.floor(over/60);
+      const s = String(over%60).padStart(2,'0');
+      display.textContent = `-${m}:${s}`;
+    }
+  }
+
+  setInterval(refresh, 1000);
+  refresh();
+  loadQueue();
+
+  // Start in display mode (controls hidden); show the tiny mode button for convenience
+  setMode(false);
 </script>
 </body>
 </html>
